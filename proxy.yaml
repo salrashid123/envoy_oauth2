@@ -1,0 +1,120 @@
+node:
+  cluster: service_oauth2
+  id: test-id-1
+
+static_resources:
+  listeners:
+  - name: listener_0
+    address:
+      socket_address: { address: 0.0.0.0, port_value: 8081 }
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: ingress_http
+          codec_type: AUTO
+          strip_matching_host_port: false
+          route_config:
+            name: local_route           
+            virtual_hosts:
+            - name: local_service
+              domains: ["*"]
+              routes:
+              - match:
+                  prefix: "/"
+                route: 
+                  cluster: service_backend
+                typed_per_filter_config:
+                  envoy.filters.http.csrf:
+                    "@type": type.googleapis.com/envoy.extensions.filters.http.csrf.v3.CsrfPolicy
+                    filter_enabled:
+                      default_value:
+                        numerator: 100
+                        denominator: HUNDRED
+          http_filters:
+          - name: envoy.filters.http.oauth2
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.oauth2.v3alpha.OAuth2
+              config:
+                token_endpoint:
+                  cluster: google_oauth2
+                  uri: https://oauth2.googleapis.com/token
+                  timeout: 3s
+                authorization_endpoint: https://accounts.google.com/o/oauth2/v2/auth
+                redirect_uri: "https://%REQ(:authority)%/callback"               
+                redirect_path_matcher:
+                  path:
+                    exact: /callback
+                signout_path:
+                  path:
+                    exact: /signout  
+                forward_bearer_token: true                      
+                credentials:
+                  client_id: "248066739582-h498t6035hm9lvp5u9jelm8i67rp43vq.apps.googleusercontent.com"
+                  token_secret:
+                    name: token
+                    sds_config:
+                      path: "./token-secret.yaml"
+                  hmac_secret:
+                    name: hmac
+                    sds_config:
+                      path: "./hmac-secret.yaml"
+                auth_scopes:
+                - openid
+                - email
+          - name: envoy.filters.http.router
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+          common_tls_context:
+            tls_certificates:
+            - certificate_chain:
+                filename: certs/envoy.crt
+              private_key:
+                filename: certs/envoy.key  
+  clusters:
+  - name: google_oauth2
+    connect_timeout: 0.25s
+    type: strict_dns
+    lb_policy: round_robin
+    dns_lookup_family: V4_ONLY    
+    load_assignment:
+      cluster_name: google_oauth2
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: oauth2.googleapis.com
+                port_value: 443
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        sni: oauth2.googleapis.com
+  - name: service_backend
+    type: static
+    connect_timeout: 5s
+    http2_protocol_options: {}
+    load_assignment:
+      cluster_name: service_backend
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: 127.0.0.1
+                port_value: 8082
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        sni: backend.esodemoapp2.com
+        common_tls_context:
+          validation_context:
+            match_subject_alt_names:
+              exact: "backend.esodemoapp2.com"
+            trusted_ca:
+              filename: "certs/tls-ca-chain.pem"
