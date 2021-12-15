@@ -97,10 +97,10 @@ Once logged in, you'll get redirected back though envoy and ultimately to the ba
 
 THe backend service will receive the following
 
-`OauthExpires`: when this cookie expires
-`Host`: the standard host header
-`BearerToken`:  this is the raw oauth2 `access_token`.  This value is optionally enabled using the `forward_bearer_token: true` flag in `proxy.yaml`
-`OauthHMAC`: the hmac of `hmac(OauthExpiresHostBearerToken)`
+* `OauthExpires`: when this cookie expires
+* `Host`: the standard host header
+* `BearerToken`:  this is the raw oauth2 `access_token`.  This value is optionally enabled using the `forward_bearer_token: true` flag in `proxy.yaml`
+* `OauthHMAC`: the hmac of `hmac(OauthExpiresHostBearerToken)`
 
 The backend service will verify the HMAC cookies sent by envoy using the shared secret value that envoy was setup with.  In other words, the backend service should extract the cookies and host header and perform the same HMAC and check the authenticity of the provided cookie.
 
