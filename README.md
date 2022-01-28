@@ -32,7 +32,7 @@ This tutorial runs envoy and backend server locally for testing. Envoy will run 
 
 The first step is to configure an oauth2 `client_id` and `client_secret`.  For google cloud, configure one [here](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid).
 
-For this tutorial, you can set the `Authorized Redirect Uri` value to `https://envoy.esodemoapp2.com:8081`.  
+For this tutorial, you can set the `Authorized Redirect Uri` value to `https://envoy.esodemoapp2.com:8081/callback`.  
 ![images/client_id.png](images/client_id.png)
 
 
