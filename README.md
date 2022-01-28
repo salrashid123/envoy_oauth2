@@ -76,7 +76,7 @@ First get the latest envoy binary:
 Then just run envoy
 
 ```
-./envoy --base-id 0 -c envoy.yaml
+./envoy --base-id 0 -c proxy.yaml
 ```
 
 #### Start backend service
