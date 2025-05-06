@@ -5,9 +5,9 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"fmt"
 	"net/http"
+	"time"
 
 	"net/http/httputil"
 
@@ -15,7 +15,9 @@ import (
 
 	"github.com/gorilla/mux"
 	"golang.org/x/net/http2"
+	"golang.org/x/oauth2"
 	oauth2svc "google.golang.org/api/oauth2/v2"
+	"google.golang.org/api/option"
 )
 
 var (
@@ -65,44 +67,60 @@ func oauthMiddleware(h http.Handler) http.Handler {
 		}
 
 		accessToken := ""
-		if *validateUser {
-			bearerTokenCookie, err := r.Cookie("BearerToken")
-			if err != nil {
-				http.Error(w, "BearerToken not present", http.StatusUnauthorized)
-				return
-			}
-			accessToken = bearerTokenCookie.Value
-		}
+		idToken := ""
+		message := ""
 
-		message := fmt.Sprintf("%s%s%s", host, expires.Value, accessToken)
+		bearerTokenCookie, err := r.Cookie("BearerToken")
+		if err != nil {
+			http.Error(w, "BearerToken not present", http.StatusUnauthorized)
+			return
+		}
+		accessToken = bearerTokenCookie.Value
+
+		idTokenCookie, err := r.Cookie("IdToken")
+		if err != nil {
+			http.Error(w, "IdToken not present", http.StatusUnauthorized)
+			return
+		}
+		idToken = idTokenCookie.Value
+
+		message = fmt.Sprintf("%s\n%s\n%s\n%s\n", host, expires.Value, accessToken, idToken)
+
+		// https://github.com/envoyproxy/envoy/blob/main/source/extensions/filters/http/oauth2/filter.cc#L177C22-L177C69
 
 		hsh := hmac.New(sha256.New, []byte(hmacKey))
 		hsh.Write(([]byte(message)))
 
-		calculatedHMAC := base64.StdEncoding.EncodeToString([]byte(hex.EncodeToString(hsh.Sum(nil))))
+		calculatedHMAC := base64.StdEncoding.EncodeToString(hsh.Sum(nil))
+
 		if hc.Value != calculatedHMAC {
 			http.Error(w, "HMAC validation Failed", http.StatusUnauthorized)
 			return
 		}
 
-		// optionally lookup who the user really is
-		userid := ""
-		if *validateUser {
-			ctx := context.Background()
-			oauth2Service, err := oauth2svc.NewService(ctx)
-			if err != nil {
-				http.Error(w, fmt.Sprint(err), http.StatusInternalServerError)
-				return
-			}
-			tokenInfoCall := oauth2Service.Tokeninfo()
-			tokenInfoCall.AccessToken(accessToken)
-			tokenInfo, err := tokenInfoCall.Do()
-			if err != nil {
-				http.Error(w, fmt.Sprint(err), http.StatusInternalServerError)
-				return
-			}
-			userid = tokenInfo.Email
+		ctx := context.Background()
+
+		rootTS := oauth2.StaticTokenSource(&oauth2.Token{
+			AccessToken: accessToken,
+			TokenType:   "Bearer",
+			Expiry:      time.Now().Add(time.Duration(time.Second * 60)),
+		})
+
+		oauth2Service, err := oauth2svc.NewService(ctx, option.WithTokenSource(rootTS))
+		if err != nil {
+			fmt.Printf("%v\n", err)
+			http.Error(w, fmt.Sprint(err), http.StatusInternalServerError)
+			return
 		}
+		tokenInfoCall := oauth2Service.Tokeninfo()
+		tokenInfoCall.AccessToken(accessToken)
+		tokenInfo, err := tokenInfoCall.Do()
+		if err != nil {
+			fmt.Printf("%v\n", err)
+			http.Error(w, fmt.Sprint(err), http.StatusInternalServerError)
+			return
+		}
+		userid := tokenInfo.Email
 		event := &parsedData{
 			AccessToken: accessToken,
 			Subject:     userid,
@@ -125,7 +143,7 @@ func main() {
 
 	flag.Parse()
 	router := mux.NewRouter()
-	router.Methods(http.MethodGet).Path("/").HandlerFunc(gethandler)
+	router.Methods(http.MethodGet).Path("/get").HandlerFunc(gethandler)
 
 	server := &http.Server{
 		Addr:    ":8082",

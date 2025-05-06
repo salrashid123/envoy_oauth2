@@ -76,7 +76,7 @@ First get the latest envoy binary:
 Then just run envoy
 
 ```
-./envoy --base-id 0 -c proxy.yaml
+./envoy --base-id 0 -c proxy.yaml -l trace
 ```
 
 #### Start backend service
@@ -84,7 +84,7 @@ Then just run envoy
 Now run the backend service webserver
 
 ```
-go run main.go --validateUser
+go run main.go
 ```
 
 In an incognito browser, goto 
@@ -100,7 +100,35 @@ THe backend service will receive the following
 * `OauthExpires`: when this cookie expires
 * `Host`: the standard host header
 * `BearerToken`:  this is the raw oauth2 `access_token`.  This value is optionally enabled using the `forward_bearer_token: true` flag in `proxy.yaml`
-* `OauthHMAC`: the hmac of `hmac(OauthExpiresHostBearerToken)`
+* `OauthHMAC`: the hmac of `hmac(Host\nOauthExpires\nBearerToken\nidToken\nrefreshToken)`
+
+
+Note, the `OauthHMAC` cookie is calculated by envoy using [this](https://github.com/envoyproxy/envoy/blob/main/source/extensions/filters/http/oauth2/filter.cc#L177C22-L177C69):
+
+
+```cpp
+std::string encodeHmacHexBase64(const std::vector<uint8_t>& secret, absl::string_view domain,
+                                absl::string_view expires, absl::string_view token = "",
+                                absl::string_view id_token = "",
+                                absl::string_view refresh_token = "") {
+  auto& crypto_util = Envoy::Common::Crypto::UtilitySingleton::get();
+  const auto hmac_payload =
+      absl::StrJoin({domain, expires, token, id_token, refresh_token}, HmacPayloadSeparator);
+  std::string encoded_hmac;
+  absl::Base64Escape(Hex::encode(crypto_util.getSha256Hmac(secret, hmac_payload)), &encoded_hmac);
+  return encoded_hmac;
+}
+```
+
+in golang:
+
+```golang
+		message = fmt.Sprintf("%s\n%s\n%s\n%s\n", host, expires.Value, accessToken, idToken)
+		hsh := hmac.New(sha256.New, []byte(hmacKey))
+		hsh.Write(([]byte(message)))
+		calculatedHMAC := base64.StdEncoding.EncodeToString(hsh.Sum(nil))
+```
+
 
 The backend service will verify the HMAC cookies sent by envoy using the shared secret value that envoy was setup with.  In other words, the backend service should extract the cookies and host header and perform the same HMAC and check the authenticity of the provided cookie.
 
