@@ -2,9 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 	"net/http"
 	"time"
@@ -48,27 +45,7 @@ func oauthMiddleware(h http.Handler) http.Handler {
 
 		fmt.Printf("Headers: %s\n", dump)
 
-		hc, err := r.Cookie("OauthHMAC")
-		if err != nil {
-			http.Error(w, fmt.Sprint(err), http.StatusUnauthorized)
-			return
-		}
-
-		expires, err := r.Cookie("OauthExpires")
-		if err != nil {
-			http.Error(w, fmt.Sprint(err), http.StatusUnauthorized)
-			return
-		}
-
-		host := r.Host
-		if host == "" {
-			http.Error(w, fmt.Sprint(err), http.StatusUnauthorized)
-			return
-		}
-
 		accessToken := ""
-		idToken := ""
-		message := ""
 
 		bearerTokenCookie, err := r.Cookie("BearerToken")
 		if err != nil {
@@ -77,26 +54,17 @@ func oauthMiddleware(h http.Handler) http.Handler {
 		}
 		accessToken = bearerTokenCookie.Value
 
-		idTokenCookie, err := r.Cookie("IdToken")
-		if err != nil {
-			http.Error(w, "IdToken not present", http.StatusUnauthorized)
-			return
-		}
-		idToken = idTokenCookie.Value
+		//		fmt.Printf("accessToken: %s\n", accessToken)
 
-		message = fmt.Sprintf("%s\n%s\n%s\n%s\n", host, expires.Value, accessToken, idToken)
+		// idToken := ""
+		// idTokenCookie, err := r.Cookie("IdToken")
+		// if err != nil {
+		// 	http.Error(w, "IdToken not present", http.StatusUnauthorized)
+		// 	return
+		// }
+		// idToken = idTokenCookie.Value
 
-		// https://github.com/envoyproxy/envoy/blob/main/source/extensions/filters/http/oauth2/filter.cc#L177C22-L177C69
-
-		hsh := hmac.New(sha256.New, []byte(hmacKey))
-		hsh.Write(([]byte(message)))
-
-		calculatedHMAC := base64.StdEncoding.EncodeToString(hsh.Sum(nil))
-
-		if hc.Value != calculatedHMAC {
-			http.Error(w, "HMAC validation Failed", http.StatusUnauthorized)
-			return
-		}
+		// fmt.Printf("idToken: %s\n", idToken)
 
 		ctx := context.Background()
 

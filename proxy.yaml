@@ -51,7 +51,7 @@ static_resources:
                     exact: /signout  
                 forward_bearer_token: true                      
                 credentials:
-                  client_id: "248066739582-h498t6035hm9lvp5u9jelm8i67rp43vq.apps.googleusercontent.com"
+                  client_id: "839905111702-turskoam0vhmkmhjef4ngu7e4fth67dn.apps.googleusercontent.com"
                   token_secret:
                     name: token
                     sds_config:
